@@ -15,10 +15,10 @@ class Direction(Enum):
     DOWN = 3,
     NONE = 4
 
-def translate_screen_to_maze(in_coords, in_size=32):
+def translate_screen_to_maze(in_coords, in_size=20):
     return int(in_coords[0] / in_size), int(in_coords[1] / in_size)
 
-def translate_maze_to_screen(in_coords, in_size=32):
+def translate_maze_to_screen(in_coords, in_size=20):
     return in_coords[0] * in_size, in_coords[1] * in_size
 
 
@@ -60,6 +60,7 @@ class GameObject:
 
     def get_position(self):
         return (self.x, self.y)
+    
 
 
 class Wall(GameObject):
@@ -72,7 +73,7 @@ class GameRenderer:
         pygame.init()
         self._width = in_width
         self._height = in_height
-        self._screen = pygame.display.set_mode((900, 800))
+        self._screen = pygame.display.set_mode((560, 500))
         pygame.display.set_caption('Pacman')
         self._clock = pygame.time.Clock()
         self._done = False
@@ -102,8 +103,9 @@ class GameRenderer:
             score_text = self.score_font.render("Score: " + str(pacman.rewards), True, (255, 255, 255))
             text_rect = score_text.get_rect()
             text_rect.left = 10  # Set the left position of the text rectangle
-            text_rect.top = 10   # Set the top position of the text rectangle
+            text_rect.top = 450   # Set the top position of the text rectangle
             game_renderer._screen.blit(score_text, text_rect)
+
             
 
             for game_object in self._game_objects:
@@ -286,7 +288,7 @@ class Ghost(MovableObject):
         #     print("Collided")
         #     self.rewards=0
         #     game_renderer._done=True
-        size = (32, 32)
+        size = (20, 20)
        
         ghost_rect = pygame.Rect(self.get_position(), size)
         # Get the position and dimensions of the Pacman object
@@ -375,17 +377,17 @@ class PacmanGameController:
             "XXXXXX XX          XX XXXXXX",
             "XXXXXX XX XXXXXXXX XX XXXXXX",
             "XXXXXX XX XXXXXXXX XX XXXXXX",
-            "X            XX            X",
-            "X XXXX XXXXX XX XXXXX XXXX X",
-            "X XXXX XXXXX XX XXXXX XXXX X",
+            "X                          X",
+            "XXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+            # "X            XX            X",
+            # "X XXXX XXXXX XX XXXXX XXXX X",
+            # "X XXXX XXXXX XX XXXXX XXXX X",
             # "X   XX       G        XX   X",
             # "XXX XX XX XXXXXXXX XX XX XXX",
             # "XXX XX XX XXXXXXXX XX XX XXX",
             # "X      XX    XX    XX      X",
-            # "X XXXXXXXXXX XX XXXXXXXXXX X",
-            # "X XXXXXXXXXX XX XXXXXXXXXX X",
-            # "X                          X",
-            # "XXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+            
+            
         ]
 
         self.numpy_maze = []
@@ -403,13 +405,19 @@ class PacmanGameController:
         self.p = Pathfinder(self.numpy_maze)
 
     def request_new_random_path(self, in_ghost: Ghost):
-        random_space = random.choice(self.reachable_spaces)
+        RED = [(255, 184, 255),(255, 0, 20),(0, 255, 255)]
+        if in_ghost._color == random.choice(RED):
+            target_coord = pacman.get_position()
+            random_space = translate_screen_to_maze(target_coord)
+        else:
+            random_space = random.choice(self.reachable_spaces)
         current_maze_coord = translate_screen_to_maze(in_ghost.get_position())
 
         path = self.p.get_path(current_maze_coord[1], current_maze_coord[0], random_space[1],
-                               random_space[0])
+                            random_space[0])
         test_path = [translate_maze_to_screen(item) for item in path]
         in_ghost.set_new_path(test_path)
+
 
     def convert_maze_to_numpy(self):
         for x, row in enumerate(self.ascii_maze):
@@ -430,11 +438,10 @@ class PacmanGameController:
 
 if __name__ == "__main__":
 
-    unified_size = 32
+    unified_size = 20
     pacman_game = PacmanGameController()
     size = pacman_game.size
     game_renderer = GameRenderer(size[0] * unified_size, size[1] * unified_size)
-
     for y, row in enumerate(pacman_game.numpy_maze):
         for x, column in enumerate(row):
             if column == 0:
@@ -443,8 +450,11 @@ if __name__ == "__main__":
    
 
     for cookie_space in pacman_game.cookie_spaces:
+        x, y = cookie_space
+        x *= unified_size
+        y *= unified_size
         translated = translate_maze_to_screen(cookie_space)
-        cookie = Cookie(game_renderer, translated[0] + unified_size / 2, translated[1] + unified_size / 2)
+        cookie = Cookie(game_renderer, x + unified_size / 2, y + unified_size / 2)
         game_renderer.add_cookie(cookie)
 
     pacman = Hero(game_renderer, unified_size, unified_size, unified_size)
@@ -458,4 +468,4 @@ if __name__ == "__main__":
         game_renderer.add_game_object(ghost)
     
     
-    game_renderer.tick(120)
+    game_renderer.tick(20)

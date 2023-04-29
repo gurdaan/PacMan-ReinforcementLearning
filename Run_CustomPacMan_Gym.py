@@ -1,41 +1,57 @@
 from stable_baselines3.common.env_checker import check_env
 from CustomPacManG import PacmanEnv
+import os
+import glob
 
-from stable_baselines3 import PPO
+from stable_baselines3 import DQN
+from stable_baselines3.dqn import MlpPolicy
 import os
 import time
 
-# models_dir = f"models/{int(time.time())}/"
-# logdir = f"logs/{int(time.time())}/"
-# if not os.path.exists(models_dir):
-# 	os.makedirs(models_dir)
+models_dir = f"models/{int(time.time())}/"
+logdir = f"logs/{int(time.time())}/"
+if not os.path.exists(models_dir):
+    os.makedirs(models_dir)
 
-# if not os.path.exists(logdir):
-# 	os.makedirs(logdir)
+if not os.path.exists(logdir):
+    os.makedirs(logdir)
+
+# model = DQN.load(f"models/1680471360/0")
+
 env = PacmanEnv()
-#model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=logdir)
-# # It will check your custom environment and output additional warnings if needed
-# check_env(env)
+model = DQN(MlpPolicy, env, verbose=1, tensorboard_log=logdir)
+
+# Set the path to the directory containing your saved models
+# model_dir1 = "models/"
+
+# Find all files in the model directory
+# model_files = glob.glob(os.path.join(model_dir1, "*"))
+
+# Find the most recently modified file
+# latest_model_file = max(model_files, key=os.path.getmtime)
+
+# Load the most recently saved model using the appropriate algorithm class
+# model = DQN.load("1680811761")
 
 episodes = 1000
-max_steps = 20
+max_steps = 2000
 
 for episode in range(episodes):
-    step_count=0
-    #print("Episode :",episode)
-    #env.game_renderer._done = False
-    #env.done=False
+    step_count = 0
     obs = env.reset()
-    while env.done==False:
-        # model.learn(total_timesteps=max_steps, reset_num_timesteps=True, tb_log_name=f"PPO")
-        # model.save(f"{models_dir}/{episode}")
-        random_action = env.action_space.sample()
-        print("action",random_action)
-        obs, reward, done, info = env.step(random_action)
-        #print('reward',reward)
-        step_count+=1
+    done = False
+
+    while not done:
+        action, _ = model.predict(obs)
+        obs, reward, done, info = env.step(action)
+        step_count += 1
+        model.learn(total_timesteps=max_steps, reset_num_timesteps=False, tb_log_name="DQN")
+
         if step_count >= max_steps:
-            env.done=True
+            done = True
+
+    model.save(f"{models_dir}/{episode}")
+
 
 
 # from stable_baselines3 import PPO

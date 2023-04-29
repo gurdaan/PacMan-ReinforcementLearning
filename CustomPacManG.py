@@ -8,6 +8,7 @@ from enum import Enum
 import numpy as np
 from PIL import ImageGrab
 import tensorflow as tf
+import time
 
 class PacmanEnv(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -48,13 +49,13 @@ class PacmanEnv(gym.Env):
         # obs_shape = (num_positions, 2)  # shape of the observation space
         # print(spaces.Box(low=obs_low, high=obs_high, shape=obs_shape, dtype=np.float64))
         # self.observation_space = spaces.Box(low=obs_low, high=obs_high, shape=obs_shape, dtype=np.float64)
-        self.observation_space = spaces.Box(low=0, high=255, shape=(3, 84, 84), dtype=np.uint8)
+        self.observation_space = spaces.Box(low=0, high=255, shape=(1, 84, 84), dtype=np.uint8)
 
     def reset(self):
         #observation = self._get_observation()
         self.done=False
       
-        unified_size = 32
+        unified_size = 20
         self.pacman_game = PacmanGameController()
         size = self.pacman_game.size
         self.game_renderer = GameRenderer(size[0] * unified_size, size[1] * unified_size)
@@ -65,10 +66,18 @@ class PacmanEnv(gym.Env):
                 if column == 0:
                     self.game_renderer.add_wall(Wall(self.game_renderer, x, y, unified_size))
 
+        # for cookie_space in self.pacman_game.cookie_spaces:
+        #     translated = translate_maze_to_screen(cookie_space)
+        #     self.cookie = Cookie(self.game_renderer, translated[0] + unified_size / 2, translated[1] + unified_size / 2)
+        #     self.game_renderer.add_cookie(self.cookie)
+
         for cookie_space in self.pacman_game.cookie_spaces:
+            x, y = cookie_space
+            x *= unified_size
+            y *= unified_size
             translated = translate_maze_to_screen(cookie_space)
-            self.cookie = Cookie(self.game_renderer, translated[0] + unified_size / 2, translated[1] + unified_size / 2)
-            self.game_renderer.add_cookie(self.cookie)
+            cookie = Cookie(self.game_renderer, x + unified_size / 2, y + unified_size / 2)
+            self.game_renderer.add_cookie(cookie)
 
         self.pacman = Hero(self.game_renderer, unified_size, unified_size, unified_size)
 
@@ -90,14 +99,12 @@ class PacmanEnv(gym.Env):
         
         # observation = self.obs
         # observation = np.array(observation)
-        print((self.obs), end="\n\n")
+        # print((self.obs), end="\n\n")
         # print((self.observation_space))
         return np.transpose(self.obs_processed, (2, 0, 1))
         # return self.obs_processed
 
-    def step(self, action): 
-        
-       
+    def step(self, action):        
         black = (0, 0, 0)
 
         if action==0:
@@ -112,7 +119,7 @@ class PacmanEnv(gym.Env):
         score_text = self.game_renderer.score_font.render("Score: " + str(self.pacman.rewards), True, (255, 255, 255))
         text_rect = score_text.get_rect()
         text_rect.left = 10  # Set the left position of the text rectangle
-        text_rect.top = 10   # Set the top position of the text rectangle
+        text_rect.top = 450   # Set the top position of the text rectangle
         self.game_renderer._screen.blit(score_text, text_rect)
         
 
@@ -132,8 +139,8 @@ class PacmanEnv(gym.Env):
         self.obs_processed= self.sess.run(self.obs_normalized, feed_dict={self.obs_placeholder: self.obs})
 
         pygame.display.flip()
-        self.game_renderer._clock.tick(120)
-        self.game_renderer._clock.tick(60)
+
+        self.game_renderer._clock.tick(20)
         self.game_renderer._screen.fill(black)
         
 
@@ -158,10 +165,12 @@ class PacmanEnv(gym.Env):
         # observation = self.obs
         # observation = np.array(observation)
         # print(observation.dtype)
-        print("Observation :",self.obs)
+        # print("Observation :",self.obs)
 
         return np.transpose(self.obs_processed,(2,0,1)), reward, self.done, {}
-
+    # def _get_observation(self):
+    #         # return current observation, expanded to 3 channels
+    #         return np.concatenate([self._observation]*3, axis=0)
 class Direction(Enum):
     LEFT = 0
     UP = 1
@@ -169,10 +178,10 @@ class Direction(Enum):
     DOWN = 3
     NONE = 4
 
-def translate_screen_to_maze(in_coords, in_size=32):
+def translate_screen_to_maze(in_coords, in_size=20):
     return int(in_coords[0] / in_size), int(in_coords[1] / in_size)
 
-def translate_maze_to_screen(in_coords, in_size=32):
+def translate_maze_to_screen(in_coords, in_size=20):
     return in_coords[0] * in_size, in_coords[1] * in_size
 
 class GameObject:
@@ -223,7 +232,7 @@ class GameRenderer:
         pygame.init()
         self._width = in_width
         self._height = in_height
-        self._screen = pygame.display.set_mode((900, 800))
+        self._screen = pygame.display.set_mode((560, 500))
         pygame.display.set_caption('Pacman')
         self._clock = pygame.time.Clock()
         self._done = False
@@ -349,6 +358,11 @@ class Hero(MovableObject):
     def __init__(self, in_surface, x, y, in_size: int):
         super().__init__(in_surface, x, y, in_size, (255, 255, 0), False)
         self.last_non_colliding_position = (0, 0)
+        self.start_time = time.time()
+        self.last_reward=0
+        self.consecutive_no_reward=0
+        self.last_dist=0
+        self.visited=[]
         
 
     def tick(self):
@@ -358,6 +372,9 @@ class Hero(MovableObject):
 
         if self.x > self._renderer._width:
             self.x = 0
+
+        if not self.check_collision_in_direction(self.direction_buffer)[0]:
+            self.last_non_colliding_position = (self.x, self.y)
 
         self.last_non_colliding_position = self.get_position()
         #print("Pacman : ",self.get_position())
@@ -374,7 +391,52 @@ class Hero(MovableObject):
             self.set_position(self.last_non_colliding_position[0], self.last_non_colliding_position[1])
 
         self.handle_cookie_pickup()
+        self.get_reward()
+    
+    def get_reward(self):
+        # Calculate the Euclidean distance between Pacman's current position and its last non-colliding position
+        dist = ((self.x - self.last_non_colliding_position[0])**2 + (self.y - self.last_non_colliding_position[1])**2)**0.5
+
+        # Check if the current location has been visited before
+        # current_pos = (self.x, self.y)
+        # if current_pos not in self.visited:
+        #     # Add a bonus reward for exploring new areas
+        #     self.rewards += 10
+        #     self.visited.append(current_pos)
+        # else:
+        #     self.rewards-=1
+
+        # Keep track of the number of consecutive time steps where the reward has not increased
+        if self.rewards == self.last_reward:
+            self.consecutive_no_reward += 1
+        else:
+            self.consecutive_no_reward = 0
         
+        self.last_reward=self.rewards
+
+        # Penalize if there has been no reward increase for a certain number of time steps
+        if self.consecutive_no_reward >= 10:
+            self.rewards -= 12
+
+        # Add a positive reward for moving away from last non-colliding position and towards unexplored areas
+        reward = dist - self.last_dist
+        self.rewards += reward
+        self.last_dist = dist
+
+            # Implement epsilon-greedy exploration bonus
+        if random.uniform(0, 1) < 0.1:
+            # Check if the current location has been visited before
+            current_pos = (self.x, self.y)
+            if current_pos not in self.visited:
+                # Add a bonus reward for exploring new areas
+                self.rewards += 10
+                self.visited.append(current_pos)
+
+        self.last_dist = dist
+
+        # Add an additional reward for every 10 points earned
+        if self.rewards % 10 == 0 and self.rewards > 0:
+            self.rewards += 25
 
     def automatic_move(self, in_direction: Direction):
         collision_result = self.check_collision_in_direction(in_direction)
@@ -395,7 +457,7 @@ class Hero(MovableObject):
             collides = collision_rect.colliderect(cookie.get_shape())
             if collides and cookie in game_objects:
                 game_objects.remove(cookie)
-                self.rewards+=1
+                self.rewards+=50
                 
         
 
@@ -407,15 +469,15 @@ class Ghost(MovableObject):
 
     def tick(self):
         super().tick()
-        size = (32, 32)
+        size = (20, 20)
        
         ghost_rect = pygame.Rect(self.get_position(), size)
         # Get the position and dimensions of the Pacman object
         pacman_rect = pygame.Rect(self.pacman.get_position(), size)
         # Check for collision between the Ghost and Pacman objects
         if ghost_rect.colliderect(pacman_rect):
-            print("Ghost collided with Pacman!")
-            self.rewards=-10
+            # print("Ghost collided with Pacman!")
+            self.rewards-=200
             self.game_renderer._done=True
 
     def __init__(self, in_surface, x, y, in_size: int, in_game_controller,pacman,game_renderer, in_color=(255, 0, 0)):
@@ -436,7 +498,7 @@ class Ghost(MovableObject):
 
     def calculate_direction_to_next_target(self) -> Direction:
         if self.next_target is None:
-            self.game_controller.request_new_random_path(self)
+            self.game_controller.request_new_random_path(self,self.pacman)
             return Direction.NONE
         diff_x = self.next_target[0] - self.x
         diff_y = self.next_target[1] - self.y
@@ -444,7 +506,7 @@ class Ghost(MovableObject):
             return Direction.DOWN if diff_y > 0 else Direction.UP
         if diff_y == 0:
             return Direction.LEFT if diff_x < 0 else Direction.RIGHT
-        self.game_controller.request_new_random_path(self)
+        self.game_controller.request_new_random_path(self,self.pacman)
         return Direction.NONE
 
     def automatic_move(self, in_direction: Direction):
@@ -493,9 +555,8 @@ class PacmanGameController:
             "XXXXXX XX          XX XXXXXX",
             "XXXXXX XX XXXXXXXX XX XXXXXX",
             "XXXXXX XX XXXXXXXX XX XXXXXX",
-            "X            XX            X",
-            "X XXXX XXXXX XX XXXXX XXXX X",
-            "X XXXX XXXXX XX XXXXX XXXX X",
+            "X                          X",
+            "XXXXXXXXXXXXXXXXXXXXXXXXXXXX",
             # "X   XX       G        XX   X",
             # "XXX XX XX XXXXXXXX XX XX XXX",
             # "XXX XX XX XXXXXXXX XX XX XXX",
@@ -519,13 +580,19 @@ class PacmanGameController:
         self.size = (0, 0)
         self.convert_maze_to_numpy()
         self.p = Pathfinder(self.numpy_maze)
+        self.pacman=PacmanEnv
 
-    def request_new_random_path(self, in_ghost: Ghost):
-        random_space = random.choice(self.reachable_spaces)
+    def request_new_random_path(self, in_ghost: Ghost,pacman:Hero):
+        RED = [(255, 184, 255),(255, 0, 20),(0, 255, 255)]
+        if in_ghost._color == random.choice(RED):
+            target_coord = pacman.get_position()
+            random_space = translate_screen_to_maze(target_coord)
+        else:
+            random_space = random.choice(self.reachable_spaces)
         current_maze_coord = translate_screen_to_maze(in_ghost.get_position())
 
         path = self.p.get_path(current_maze_coord[1], current_maze_coord[0], random_space[1],
-                               random_space[0])
+                            random_space[0])
         test_path = [translate_maze_to_screen(item) for item in path]
         in_ghost.set_new_path(test_path)
 
@@ -544,4 +611,4 @@ class PacmanGameController:
                     self.cookie_spaces.append((y, x))
                     self.reachable_spaces.append((y, x))
             self.numpy_maze.append(binary_row)
-        print(self.numpy_maze)
+        # print(self.numpy_maze)
